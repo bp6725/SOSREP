@@ -10,19 +10,18 @@ This repository contains the implementation of the methods described in our pape
 
 
 ## Installation
+## Installation
+Instructions on setting up the environment and installing necessary dependencies.
 
-bash
-Copy code
-git clone https://github.com/bp6725/SOSREP.git
-cd SOSREP
-pip install -r requirements.txt
+```bash
+git clone https://github.com/bp6725/SOSREP.git 
+cd SOSREP 
+pip install -r requirements.txt 
+```
 
-python
-%TODO : ADD.
-If you find this work useful, please consider citing:
-%TODO : ADD.
 
-License :  MIT
+# Example usage
+TODO
 
-Contact
+##Contact
 For any additional questions or feedback, please contact Benny Perets at sbp67250@campus.technion.ac.il.
