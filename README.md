@@ -13,35 +13,16 @@ This repository contains the implementation of the methods described in our pape
 
 bash
 Copy code
-git clone https://github.com/yourusername/sobolev-space-density-model.git
-cd sobolev-space-density-model
+git clone https://github.com/bp6725/SOSREP.git
+cd SOSREP
 pip install -r requirements.txt
-Usage
-Quick start guide or examples on how to use the implemented methods with your own data or with provided example datasets.
 
 python
-Copy code
-# Example usage
-from sobolev_density import SobolevDensityEstimator
-model = SobolevDensityEstimator(params)
-model.fit(data)
-Citation
+%TODO : ADD.
 If you find this work useful, please consider citing:
+%TODO : ADD.
 
-mathematica
-Copy code
-@article{yourpaper2024,
-  title={Sobolev Space Regularised Pre Density Models},
-  author={Author, First and Others, And},
-  journal={Journal of Amazing Density Estimations},
-  year={2024},
-  volume={XX},
-  number={YY},
-  pages={123-456},
-  publisher={Famous Publisher}
-}
-License
-Specify the license under which your code is made available (e.g., MIT, GPL).
+License :  MIT
 
 Contact
-For any additional questions or feedback, please contact [Your Name] at [Your Email].
+For any additional questions or feedback, please contact Benny Perets at sbp67250@campus.technion.ac.il.
