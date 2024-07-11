@@ -6,7 +6,7 @@ import copy
 import random
 from tqdm import tqdm
 
-from SOSREP.src.kernels import RBfKernel, SDoKernel, LaplacianKernel
+from SOSREP.src.kernels import RBfKernel, SDoKernel, LaplacianKernel, LaplacianLogKernel, RBFLogKernel
 
 def np2th(np_arr, device='cuda'):
     if isinstance(np_arr, torch.Tensor):
@@ -59,10 +59,7 @@ def fit_mds_kernel(X_train, kernel_func, learning_rate_scalar, n_iters_optim, rn
             for cur_iter in range(n_iters_optim):
                 Ka = K @ alphas
 
-                if not grad_natural:
-                    direct_grad = 2 * (Ka - (K @ (1. / Ka)) / Ndata)
-                else:
-                    direct_grad = 2 * (alphas - (1. / Ka) / Ndata)
+                direct_grad = 2 * (alphas - (1. / Ka) / Ndata)
 
                 sq_norm = torch.reshape((alphas.T) @ Ka, ())
                 lls = torch.log(Ka ** 2)
@@ -70,7 +67,7 @@ def fit_mds_kernel(X_train, kernel_func, learning_rate_scalar, n_iters_optim, rn
 
                 loss = sq_norm - mean_ll
 
-                alphas.add_(direct_grad, alpha=-learning_rate)
+                alphas.add_(direct_grad, alpha= -1 * learning_rate)
 
                 res_mean_ll.append(th2np(mean_ll))
                 res_norm.append(th2np(sq_norm))
@@ -101,15 +98,17 @@ def evaluate_f2(X_train, X_test, kernel_func, alphas):
     else:
         return f_xtrain**2
 
-
 class SOSREP:
     def __init__(self):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    def fit(self, X_train, X_test=None, kernel_type='RBF', Bs=np.logspace(-2, 2, 15),
-            div_window=3, learning_rate_scalar=0.1, n_iters_optim=1000, rng_seed=19372):
+    def fit(self, X_train, X_test=None,stable_kernels = True, kernel_type='RBF', Bs=np.logspace(-2, 2, 15),
+            div_window=3, learning_rate_scalar=1e-2, n_iters_optim=30000, rng_seed=19372):
         self.X_train = X_train = np2th(X_train, self.device)
         X_test = np2th(X_test, self.device) if X_test is not None else None
+
+        if stable_kernels :
+            kernel_type = 'Log' + kernel_type if 'Log' not in kernel_type else kernel_type
 
         if X_test is None:
             # If X_test is not provided, use a portion of X_train as X_test
@@ -117,7 +116,7 @@ class SOSREP:
             X_train, X_test = X_train[:train_size], X_train[train_size:]
 
         optimal_b, best_results, fds, Bs = self.fit_predict(
-            X_train, X_test, kernel_type, Bs, div_window, learning_rate_scalar, n_iters_optim, rng_seed
+            X_train, X_test, kernel_type, Bs, div_window, learning_rate_scalar, n_iters_optim, rng_seed,stable_kernels
         )
 
         self.optimal_b = optimal_b
@@ -134,17 +133,24 @@ class SOSREP:
         return f2_test
 
     def fit_predict(self, X_train, X_test, kernel_type = 'RBF', Bs = np.logspace(-2,2,15),
-            div_window=3, learning_rate_scalar=0.1, n_iters_optim=1000,  rng_seed=19372):
+            div_window=3, learning_rate_scalar=1e-2, n_iters_optim=30000,  rng_seed=19372, stable_kernels = True):
         def run_with_fd(b):
             kernel_func = self._return_kernel_func(kernel_type, b)
             alphas, _, _, _, _ = fit_mds_kernel(X_train, kernel_func, learning_rate_scalar, n_iters_optim,
                                                   rng_seed)
             f_xtest, f_xtrain = evaluate_f2(X_train, X_test, kernel_func, alphas)
 
-            partial_log_density = partial(self._log_density, X_train, kernel_func, alphas)
+            if 'Log' in kernel_type:
+                partial_log_density = partial(self._log_density_log_kernel, X_train, kernel_func, alphas)
+            else:
+                partial_log_density = partial(self._log_density, X_train, kernel_func, alphas)
+
             fd_test = self.fast_fisher_divergence(partial_log_density, X_test)
 
             return fd_test, (f_xtest, f_xtrain, alphas)
+        self.X_train = X_train
+        if stable_kernels :
+            kernel_type = 'Log' + kernel_type if 'Log' not in kernel_type else kernel_type
 
         X_train = np2th(X_train, self.device)
         X_test = np2th(X_test, self.device)
@@ -152,7 +158,7 @@ class SOSREP:
         fds = []
         results = []
         for b in Bs:
-            fd, result =  run_with_fd(b)
+            fd, result = run_with_fd(b)
             fds.append(fd.detach().cpu())
             results.append(result)
 
@@ -170,6 +176,10 @@ class SOSREP:
             optimal_b = Bs[optimal_index]
             best_results = results[optimal_index]
 
+        self.kernel_func = self._return_kernel_func(kernel_type, optimal_b)
+        _, _, self.alphas = best_results
+
+
         return optimal_b, best_results, fds, Bs
 
     def _return_kernel_func(self, kernel_type, b):
@@ -181,6 +191,12 @@ class SOSREP:
         elif kernel_type == 'Laplacian':
             gamma = 1 / b
             return LaplacianKernel(gamma)
+        elif kernel_type == 'LogLaplacian':
+            gamma = 1 / b
+            return LaplacianLogKernel(gamma)
+        elif kernel_type == 'LogRBF':
+            gamma = 1 / b
+            return RBFLogKernel(gamma)
         else:
             raise ValueError(f"Unsupported kernel type: {kernel_type}")
 
@@ -242,13 +258,25 @@ class SOSREP:
         f2_vals += torch.min(f2_vals[f2_vals != 0]) * 1e-6 if any(f2_vals != 0) else 1e-30
         return torch.log(f2_vals)
 
+    def _log_density_log_kernel(self, x_train_as_th, log_kernel_func, alphas, x_batch):
+
+        K_log = log_kernel_func(x_batch, x_train_as_th)
+        K_log_max = torch.max(K_log, dim=1)[0][:, None]
+        K_log_diff = K_log - K_log_max
+        K_diff = torch.exp(K_log_diff)
+
+        f_vals = torch.matmul(K_diff, alphas)
+        f2_vals = f_vals ** 2
+
+        return torch.log(f2_vals) + 2 * K_log_max
+
     def get_grads(self, f, x):
         x = x.clone().detach().requires_grad_(True)
         vals = torch.sum(f(x))
         vals.backward()
         return x.grad
 
-    def fast_hessian_trace_estimator(self, f, x_batch, h=1e-4, eps_reps=3):
+    def fast_hessian_trace_estimator(self, f, x_batch, h=1e-4, eps_reps=300):
         grads = self.get_grads(f, x_batch)
 
         estimates = []

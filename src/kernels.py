@@ -35,6 +35,28 @@ class RBfKernel():
 
         return kernel_matrix
 
+class RBFLogKernel():
+    """
+    Compute the RBF kernel between two tensors.
+
+    :param X1: Tensor of shape (N, D)
+    :param X2: Tensor of shape (N, D)
+    :param gamma: Scale parameter
+    :return: Kernel matrix of shape (N, N)
+    """
+
+    def __init__(self, gamma):
+        self.gamma = gamma
+
+    def __call__(self, X1, X2):
+
+        dim = X1.shape[1]
+
+        distance_squared = torch.cdist(X1.unsqueeze(0), X2.unsqueeze(0), p=2).squeeze(0) ** 2
+        kernel_matrix = -(0.5) * (self.gamma ** 2) * distance_squared / dim
+
+        return kernel_matrix
+
 class LaplacianKernel():
     """
         Compute the Laplacian kernel between two tensors.
@@ -54,6 +76,27 @@ class LaplacianKernel():
 
         kernel_matrix = torch.exp(-1 * self.gamma * distance_squared / np.sqrt(dim))
         kernel_matrix = kernel_matrix + torch.min(kernel_matrix).clone().detach().item() * 1e-6
+        return kernel_matrix
+
+class LaplacianLogKernel():
+    """
+        Compute the Laplacian kernel between two tensors.
+
+        :param X1: Tensor of shape (N, D)
+        :param X2: Tensor of shape (M, D)
+        :param gamma: Scale parameter for the Laplacian kernel
+        :return: Kernel matrix of shape (N, M)
+        """
+    def __init__(self, gamma):
+        self.gamma = gamma
+
+    def __call__(self, X1, X2):
+        dim = X1.shape[1]
+
+        distance_squared = torch.cdist(X1.unsqueeze(0), X2.unsqueeze(0), p=2).squeeze(0)
+
+        kernel_matrix = -1 * self.gamma * distance_squared / np.sqrt(dim)
+
         return kernel_matrix
 
 class SDoKernel():
